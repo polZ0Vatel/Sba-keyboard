@@ -1,0 +1,41 @@
+name: MilkyNiceKeyboard
+options:
+  bundleIdPrefix: com.milkynice
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+targets:
+  MilkyNiceKeyboard:
+    type: application
+    platform: iOS
+    sources:
+      - path: HostApp
+    dependencies:
+      - target: MilkyNiceKeyboardExtension
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.milkynice.keyboard
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+  MilkyNiceKeyboardExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: KeyboardExtension
+        excludes:
+          - Info.plist
+          - Ultimate_milki_nice.ttf
+    resources:
+      - path: KeyboardExtension/Ultimate_milki_nice.ttf
+    info:
+      path: KeyboardExtension/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.milkynice.keyboard.extension
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
