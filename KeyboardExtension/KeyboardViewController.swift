@@ -2,8 +2,15 @@ import UIKit
 import CoreText
 
 final class KeyboardViewController: UIInputViewController {
+    private enum Layer {
+        case letters
+        case numbers
+        case symbols
+    }
+
     private var isRussian = true
     private var isUppercase = true
+    private var layer: Layer = .letters
 
     private let russianRows = [
         ["Й","Ц","У","К","Е","Н","Г","Ш","Щ","З","Х"],
@@ -15,6 +22,18 @@ final class KeyboardViewController: UIInputViewController {
         ["A","S","D","F","G","H","J","K","L"],
         ["⇧","Z","X","C","V","B","N","M","⌫"]
     ]
+    private let numberRows = [
+        ["1","2","3","4","5","6","7","8","9","0"],
+        ["-","/",":",";","(",")","₽","&","@","\""],
+        ["#+=",".",",","?","!","'","⌫"]
+    ]
+    private let symbolRows = [
+        ["[","]","{","}","#","%","^","*","+","="],
+        ["_","\\","|","~","<",">","€","£","¥","•"],
+        ["123",".",",","?","!","'","⌫"]
+    ]
+
+    private let specialKeys: Set<String> = ["⇧", "⌫", "🌐 EN", "🌐 RU", "123", "#+=", "ABC", "АБВ", "ввод"]
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -42,7 +61,13 @@ final class KeyboardViewController: UIInputViewController {
             root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8)
         ])
 
-        let rows = isRussian ? russianRows : englishRows
+        let rows: [[String]]
+        switch layer {
+        case .letters: rows = isRussian ? russianRows : englishRows
+        case .numbers: rows = numberRows
+        case .symbols: rows = symbolRows
+        }
+
         for row in rows {
             let stack = UIStackView()
             stack.axis = .horizontal
@@ -60,9 +85,17 @@ final class KeyboardViewController: UIInputViewController {
         let language = makeKey(isRussian ? "🌐 EN" : "🌐 RU")
         language.widthAnchor.constraint(equalToConstant: 62).isActive = true
         bottom.addArrangedSubview(language)
-        let numbers = makeKey("123")
-        numbers.widthAnchor.constraint(equalToConstant: 48).isActive = true
-        bottom.addArrangedSubview(numbers)
+
+        // Кнопка переключения слоя: в буквенном слое открывает цифры, в остальных возвращает буквы.
+        let layerTitle: String
+        switch layer {
+        case .letters: layerTitle = "123"
+        case .numbers, .symbols: layerTitle = isRussian ? "АБВ" : "ABC"
+        }
+        let layerKey = makeKey(layerTitle)
+        layerKey.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        bottom.addArrangedSubview(layerKey)
+
         bottom.addArrangedSubview(makeKey("пробел"))
         let period = makeKey(".")
         period.widthAnchor.constraint(equalToConstant: 42).isActive = true
@@ -75,19 +108,37 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func makeKey(_ title: String) -> UIButton {
-        let button = UIButton(type: .system)
-        button.setTitle(title, for: .normal)
-        button.setTitleColor(.black, for: .normal)
-        button.titleLabel?.font = UIFont(name: "Milky Nice", size: title.count > 2 ? 14 : 22)
-            ?? UIFont.systemFont(ofSize: title.count > 2 ? 14 : 22)
-        let special = ["⇧", "⌫", "🌐 EN", "🌐 RU", "123", "ввод"]
-        button.backgroundColor = special.contains(title)
-            ? UIColor(red: 0.69, green: 0.72, blue: 0.77, alpha: 1) : .white
-        button.layer.cornerRadius = 5
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.12
-        button.layer.shadowRadius = 0.5
-        button.layer.shadowOffset = CGSize(width: 0, height: 1)
+        let fontSize: CGFloat = title.count > 2 ? 14 : 22
+        let font = UIFont(name: "Milky Nice", size: fontSize) ?? UIFont.systemFont(ofSize: fontSize)
+        let isSpecial = specialKeys.contains(title)
+
+        let button: UIButton
+        if #available(iOS 26.0, *) {
+            // Стеклянный стиль Liquid Glass (собирается только Xcode 26+).
+            var config = UIButton.Configuration.glass()
+            var attributed = AttributedString(title)
+            attributed.uiKit.font = font
+            attributed.uiKit.foregroundColor = .black
+            config.attributedTitle = attributed
+            if isSpecial {
+                config.baseBackgroundColor = UIColor(red: 0.69, green: 0.72, blue: 0.77, alpha: 1)
+            }
+            config.cornerStyle = .medium
+            button = UIButton(configuration: config)
+        } else {
+            button = UIButton(type: .system)
+            button.setTitle(title, for: .normal)
+            button.setTitleColor(.black, for: .normal)
+            button.titleLabel?.font = font
+            button.backgroundColor = isSpecial
+                ? UIColor(red: 0.69, green: 0.72, blue: 0.77, alpha: 1) : .white
+            button.layer.cornerRadius = 5
+            button.layer.shadowColor = UIColor.black.cgColor
+            button.layer.shadowOpacity = 0.12
+            button.layer.shadowRadius = 0.5
+            button.layer.shadowOffset = CGSize(width: 0, height: 1)
+        }
+
         button.addAction(UIAction { [weak self] _ in self?.handleKey(title) }, for: .touchUpInside)
         return button
     }
@@ -102,16 +153,24 @@ final class KeyboardViewController: UIInputViewController {
         case "🌐 EN", "🌐 RU":
             isRussian.toggle()
             buildKeyboard()
+        case "123":
+            layer = .numbers
+            buildKeyboard()
+        case "#+=":
+            layer = .symbols
+            buildKeyboard()
+        case "ABC", "АБВ":
+            layer = .letters
+            buildKeyboard()
         case "пробел":
             textDocumentProxy.insertText(" ")
         case "ввод":
             textDocumentProxy.insertText("\n")
-        case "123":
-            // Цифровой и символьный слой пока не реализован.
-            break
-        case ".":
-            textDocumentProxy.insertText(".")
         default:
+            if layer != .letters {
+                textDocumentProxy.insertText(key)
+                return
+            }
             textDocumentProxy.insertText(isUppercase ? key : key.lowercased())
             if isUppercase {
                 isUppercase = false
