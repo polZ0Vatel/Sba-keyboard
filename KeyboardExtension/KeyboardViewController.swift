@@ -112,35 +112,97 @@ final class KeyboardViewController: UIInputViewController {
         let font = UIFont(name: "Milky Nice", size: fontSize) ?? UIFont.systemFont(ofSize: fontSize)
         let isSpecial = specialKeys.contains(title)
 
-        let button: UIButton
+        let button = makeBaseButton(title: title, font: font, isSpecial: isSpecial)
+
+        button.addAction(UIAction { [weak self] action in
+            guard let self, let key = action.sender as? UIButton else { return }
+            self.showPreview(for: key, title: title)
+        }, for: .touchDown)
+        button.addAction(UIAction { [weak self] _ in self?.hidePreview() },
+                         for: [.touchUpInside, .touchUpOutside, .touchDragExit, .touchCancel])
+        button.addAction(UIAction { [weak self] _ in self?.handleKey(title) }, for: .touchUpInside)
+        return button
+    }
+
+    private func makeBaseButton(title: String, font: UIFont, isSpecial: Bool) -> UIButton {
+        let tint = UIColor(red: 0.69, green: 0.72, blue: 0.77, alpha: 1)
+#if compiler(>=6.2)
+        // Liquid Glass: API есть только в iOS 26 SDK (Xcode 26+).
         if #available(iOS 26.0, *) {
-            // Стеклянный стиль Liquid Glass (собирается только Xcode 26+).
             var config = UIButton.Configuration.glass()
             var attributed = AttributedString(title)
             attributed.uiKit.font = font
             attributed.uiKit.foregroundColor = .black
             config.attributedTitle = attributed
             if isSpecial {
-                config.baseBackgroundColor = UIColor(red: 0.69, green: 0.72, blue: 0.77, alpha: 1)
+                config.baseBackgroundColor = tint
             }
             config.cornerStyle = .medium
-            button = UIButton(configuration: config)
-        } else {
-            button = UIButton(type: .system)
-            button.setTitle(title, for: .normal)
-            button.setTitleColor(.black, for: .normal)
-            button.titleLabel?.font = font
-            button.backgroundColor = isSpecial
-                ? UIColor(red: 0.69, green: 0.72, blue: 0.77, alpha: 1) : .white
-            button.layer.cornerRadius = 5
-            button.layer.shadowColor = UIColor.black.cgColor
-            button.layer.shadowOpacity = 0.12
-            button.layer.shadowRadius = 0.5
-            button.layer.shadowOffset = CGSize(width: 0, height: 1)
+            return UIButton(configuration: config)
         }
-
-        button.addAction(UIAction { [weak self] _ in self?.handleKey(title) }, for: .touchUpInside)
+#endif
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.black, for: .normal)
+        button.titleLabel?.font = font
+        button.backgroundColor = isSpecial ? tint : .white
+        button.layer.cornerRadius = 5
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.12
+        button.layer.shadowRadius = 0.5
+        button.layer.shadowOffset = CGSize(width: 0, height: 1)
         return button
+    }
+
+    // MARK: - Превью нажатой буквы (как во встроенной клавиатуре)
+
+    private var previewBubble: UIView?
+
+    private func showPreview(for button: UIButton, title: String) {
+        guard title.count == 1, !specialKeys.contains(title) else { return }
+        hidePreview()
+
+        let bubbleWidth = max(button.bounds.width + 16, 56)
+        let bubbleHeight: CGFloat = 64
+        let keyFrame = button.convert(button.bounds, to: view)
+        var x = keyFrame.midX - bubbleWidth / 2
+        x = min(max(x, 2), view.bounds.width - bubbleWidth - 2)
+        let y = keyFrame.minY - bubbleHeight - 6
+
+        let bubble = UIView(frame: CGRect(x: x, y: y, width: bubbleWidth, height: bubbleHeight))
+        bubble.backgroundColor = .white
+        bubble.layer.cornerRadius = 10
+        bubble.layer.shadowColor = UIColor.black.cgColor
+        bubble.layer.shadowOpacity = 0.25
+        bubble.layer.shadowRadius = 4
+        bubble.layer.shadowOffset = CGSize(width: 0, height: 2)
+
+        let label = UILabel(frame: bubble.bounds)
+        label.text = title
+        label.font = UIFont(name: "Milky Nice", size: 32) ?? UIFont.systemFont(ofSize: 32)
+        label.textColor = .black
+        label.textAlignment = .center
+        bubble.addSubview(label)
+
+        bubble.transform = CGAffineTransform(scaleX: 0.6, y: 0.6)
+        bubble.alpha = 0
+        view.addSubview(bubble)
+        previewBubble = bubble
+        UIView.animate(withDuration: 0.08, delay: 0, options: [.curveEaseOut]) {
+            bubble.transform = .identity
+            bubble.alpha = 1
+        }
+    }
+
+    private func hidePreview() {
+        guard let bubble = previewBubble else { return }
+        previewBubble = nil
+        UIView.animate(withDuration: 0.1, animations: {
+            bubble.alpha = 0
+            bubble.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+        }, completion: { _ in
+            bubble.removeFromSuperview()
+        })
     }
 
     private func handleKey(_ key: String) {
